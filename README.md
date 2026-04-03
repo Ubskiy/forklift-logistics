@@ -1,55 +1,93 @@
-# Оптимизация внутризаводской логистики (timeline + simulated annealing)
+# Forklift Logistics Optimization
 
-Проект моделирует поток `S -> C1 -> C2 -> C3 -> C4 -> P` с 2 погрузчиками и сравнивает:
-- `Простая стратегия` (наивная диспетчеризация)
-- `Имитация отжига` (оптимизация порядка маршрутов и партий)
+Прототип системы оптимизации внутризаводской логистики на производственном предприятии.
 
-Главная цель отчёта: показать не только итоговый `objective`, но и **как** решение достигается во времени.
+Проект моделирует поток материалов между зонами:
+`S -> C1 -> C2 -> C3 -> C4 -> P`,
+использует дискретно-событийную симуляцию и сравнивает:
+- простую стратегию диспетчеризации;
+- оптимизацию расписания через Simulated Annealing.
 
-## Что теперь есть
+Основная цель: сделать результат не просто «лучше по числу», а **интерпретируемым** по времени, маршрутам и реальным рейсам погрузчиков.
 
-1. Явная временная модель рейсов.
-Каждый рейс содержит интервалы:
+## Постановка задачи
+
+Нужно спланировать перевозки так, чтобы:
+- максимально выполнить план отгрузки щитов;
+- снизить простой узкого места (`C3`);
+- снизить простой погрузчиков;
+- минимизировать неэффективные рейсы и нарушения ограничений.
+
+Система должна показывать не только итоговые метрики, но и:
+- кто, куда и когда ехал;
+- как распределились рейсы по маршрутам;
+- почему одна стратегия лучше другой.
+
+## Исходные данные (базовый сценарий)
+
+### Производственная цепочка
+- `S` — склад труб
+- `C1` — заготовительно-сварочный цех
+- `C2` — рихтовка/зачистка
+- `C3` — покраска (узкое место)
+- `C4` — фанерование
+- `P` — площадка отгрузки
+
+### Погрузчики
+- Количество: `2`
+- Скорость: `15 км/ч`
+- Грузоподъёмность: `1700 кг`
+- Ограничение: максимум `10 щитов` за рейс
+- Ограничение: максимум `4 рейса/час` на один погрузчик 
+
+### Грузы
+- Труба: `120 кг`
+- Щит: `160 кг`
+
+### Время маршрутов
+- `S -> C1`: `6 мин`
+- `C1 -> C2`: `6 мин`
+- `C2 -> C3`: `6 мин`
+- `C3 -> C4`: `10 мин` 
+- `C4 -> P`: `6 мин`
+
+### Производительности цехов
+- `C1`: `88 щитов / 11 часов` (дневной сценарий)
+- `C2`: `12 щитов/час`
+- `C3`: `8 щитов/час`
+- `C4`: `12 щитов/час`
+
+Все параметры вынесены в конфиг:
+- [app/config/constants.py]
+
+## Что умеет проект
+
+- Дискретно-событийная симуляция смены с явным временем.
+- Хранение каждого рейса с фазами:
+  - погрузка,
+  - движение,
+  - разгрузка.
+- Агрегированная статистика маршрутов по стратегии.
+- Подробный журнал рейсов (trip log) в хронологическом порядке.
+- Сравнение стратегий с таблицей дельт.
+- График-таймлайн (Gantt-like) занятости погрузчиков.
+- Оптимизация через Simulated Annealing.
+
+## Как решена задача
+
+### 1. Модель времени
+Симулятор работает по событиям и буферам между цехами.
+Для каждого рейса фиксируются:
 - `start_time`
 - `load_start/load_end`
 - `travel_start/travel_end`
 - `unload_start/unload_end`
 - `end_time`
 
-2. Журнал рейсов (`trip log`) по времени.
+Это обеспечивает прозрачный timeline и корректный расчёт простоев.
 
-3. Агрегированная статистика маршрутов (`route stats`) по каждой стратегии.
-
-4. Сравнение стратегий с таблицей дельт.
-
-5. Основной график: Gantt-like таймлайн занятости погрузчиков.
-
-## Где что менять
-
-Все ключевые числа в одном месте:
-- [/Users/arsen/forklift-logistics/app/config/constants.py](/Users/arsen/forklift-logistics/app/config/constants.py)
-
-Там настраиваются:
-- времена движения/погрузки/выгрузки
-- буферы
-- производительности цехов
-- веса objective
-- параметры SA
-
-## Ключевые файлы
-
-- Сценарий и конфиг-модели: [/Users/arsen/forklift-logistics/app/domain/scenario.py](/Users/arsen/forklift-logistics/app/domain/scenario.py)
-- Сущности результата и `TripRecord`: [/Users/arsen/forklift-logistics/app/domain/entities.py](/Users/arsen/forklift-logistics/app/domain/entities.py)
-- Симулятор timeline: [/Users/arsen/forklift-logistics/app/simulation/simulator.py](/Users/arsen/forklift-logistics/app/simulation/simulator.py)
-- Формат отчётов (trip log/route stats/delta): [/Users/arsen/forklift-logistics/app/simulation/metrics.py](/Users/arsen/forklift-logistics/app/simulation/metrics.py)
-- Целевая функция: [/Users/arsen/forklift-logistics/app/optimization/objective.py](/Users/arsen/forklift-logistics/app/optimization/objective.py)
-- Simulated annealing: [/Users/arsen/forklift-logistics/app/optimization/simulated_annealing.py](/Users/arsen/forklift-logistics/app/optimization/simulated_annealing.py)
-- CLI: [/Users/arsen/forklift-logistics/app/interfaces/cli.py](/Users/arsen/forklift-logistics/app/interfaces/cli.py)
-- Графики: [/Users/arsen/forklift-logistics/app/interfaces/visualization.py](/Users/arsen/forklift-logistics/app/interfaces/visualization.py)
-
-## Целевая функция
-
-Используется взвешенная сумма:
+### 2. Целевая функция
+Оптимизация построена так, что ключевая метрика — выполненная отгрузка:
 
 ```text
 objective =
@@ -62,9 +100,67 @@ objective =
   + violation_penalty_weight * violations
 ```
 
-Важно: `underproduction_penalty` доминирует, поэтому недовыпуск сильно ухудшает решение.
+Идея:
+- недовыпуск доминирует;
+- если отгрузка одинаковая, решения сравниваются по вторичным критериям.
 
-## Быстрый запуск в VS Code
+### 3. Simulated Annealing
+Отжиг меняет:
+- порядок приоритетов маршрутов;
+- размеры партий по типам грузов.
+
+Кандидаты оцениваются полным прогоном симулятора.
+
+### 4. Интерпретация результата
+Для каждой стратегии выводятся:
+- summary-метрики,
+- route stats,
+- trip log,
+- delta-таблица,
+- таймлайн погрузчиков.
+
+## Структура проекта
+
+```text
+app/
+  config/
+    constants.py
+    defaults.py
+    settings.py
+  domain/
+    entities.py
+    scenario.py
+    enums.py
+  simulation/
+    simulator.py
+    metrics.py
+  optimization/
+    objective.py
+    baseline_policies.py
+    simulated_annealing.py
+  interfaces/
+    cli.py
+    desktop_app.py
+```
+
+## Основные сущности
+
+- `Scenario` — параметры смены, ресурсов, производительности и ограничений.
+- `TripRecord` — один рейс с полным временным профилем.
+- `SimulationResult` — итог прогона стратегии.
+- `RouteStats` — агрегаты по маршрутам.
+- `DispatchPolicy` — правило выбора маршрутов/партий.
+
+Код сущностей:
+- [app/domain/scenario.py]
+- [app/domain/entities.py]
+
+## Установка и запуск
+
+### Требования
+- Python `3.11+`
+
+### Быстрый старт
 
 ```bash
 python -m venv .venv
@@ -73,16 +169,18 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-### CLI: сравнение стратегий
+## CLI
+
+### Сравнение стратегий
 
 ```bash
-python -m app.interfaces.cli compare --scenario sample_day --iterations 120 --show-delta --show-route-stats --show-trip-log
-```
-
-### CLI: с сохранением таймлайнов
-
-```bash
-python -m app.interfaces.cli compare --scenario sample_day --iterations 120 --plot --plot-timeline-only
+python -m app.interfaces.cli compare \
+  --scenario sample_day \
+  --iterations 120 \
+  --seed 42 \
+  --show-delta \
+  --show-route-stats \
+  --show-trip-log
 ```
 
 ### Только простая стратегия
@@ -91,14 +189,36 @@ python -m app.interfaces.cli compare --scenario sample_day --iterations 120 --pl
 python -m app.interfaces.cli baseline --scenario sample_day --show-route-stats --show-trip-log
 ```
 
-### Только отжиг
+### Только Simulated Annealing
 
 ```bash
 python -m app.interfaces.cli sa --scenario sample_day --iterations 120 --show-route-stats --show-trip-log
 ```
 
-### Desktop (Tkinter)
+### Построение графиков таймлайна
+
+```bash
+python -m app.interfaces.cli compare --scenario sample_day --iterations 120 --plot --plot-timeline-only
+```
+
+PNG-файлы сохраняются в `artifacts/plots`.
+
+## Desktop-режим
 
 ```bash
 python run_desktop.py
 ```
+
+## Ограничения текущей версии
+
+- Модель упрощена для демонстрации (без поломок и случайных событий).
+- Геометрия маршрутов не детализируется (используются заданные времена плеч).
+- Нет real-time пересчёта в потоке, но архитектура подготовлена для дальнейшего расширения.
+
+## Развитие
+
+Планируемые шаги:
+- real-time rescheduling;
+- более детальные правила формирования партий;
+- дополнительные операционные ограничения;
+- web/UI слой для интерактивного анализа сценариев.
