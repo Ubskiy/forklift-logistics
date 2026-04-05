@@ -1,23 +1,23 @@
-"""Русскоязычный CLI для сравнения стратегий логистики."""
+"""Компактный CLI проекта."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from app.data.loaders import load_scenario
-from app.interfaces.visualization import save_forklift_timeline_plot
-from app.optimization.baseline_policies import build_simple_policy
-from app.optimization.objective import evaluate_objective
-from app.optimization.simulated_annealing import optimize_with_sa
-from app.simulation.metrics import (
+from app.core import (
     ascii_timeline,
+    build_simple_policy,
     delta_table,
+    evaluate_objective,
     format_minutes_hms,
+    load_scenario,
+    optimize_with_sa,
     route_stats_table,
+    run_simulation,
+    save_forklift_timeline_plot,
     trip_log_table,
 )
-from app.simulation.simulator import run_simulation
 
 
 def _summary_block(title: str, result) -> str:
@@ -55,11 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scenario", default="sample_day")
     parser.add_argument("--iterations", type=int, default=200)
     parser.add_argument("--seed", type=int, default=42)
-
     parser.add_argument("--show-trip-log", action="store_true")
     parser.add_argument("--show-route-stats", action="store_true")
     parser.add_argument("--show-delta", action="store_true")
-
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--plot-timeline-only", action="store_true")
     parser.add_argument("--plot-dir", default="artifacts/plots")
@@ -67,28 +65,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_baseline(scenario):
-    result = run_simulation(
-        scenario=scenario,
-        strategy_name="simple",
-        policy=build_simple_policy(),
-    )
-    result.meta["objective_breakdown"] = evaluate_objective(result, scenario).__dict__
+    result = run_simulation(scenario=scenario, strategy_name="simple", policy=build_simple_policy())
+    evaluate_objective(result, scenario)
     return result
 
 
 def _run_sa(scenario):
     sa = optimize_with_sa(scenario=scenario, seed=scenario.random_seed)
-    sa.best_result.meta["objective_breakdown"] = evaluate_objective(sa.best_result, scenario).__dict__
+    evaluate_objective(sa.best_result, scenario)
     return sa
 
 
 def _save_timeline_plot(result, scenario, output_file: Path, title: str) -> Path:
-    return save_forklift_timeline_plot(
-        result,
-        output_file,
-        shift_start_hhmm=scenario.shift_start_hhmm,
-        title=title,
-    )
+    return save_forklift_timeline_plot(result, output_file, shift_start_hhmm=scenario.shift_start_hhmm, title=title)
 
 
 def main() -> None:
@@ -125,7 +114,6 @@ def main() -> None:
     if args.mode == "sa":
         sa = _run_sa(scenario)
         res = sa.best_result
-
         print(_summary_block("Имитация отжига", res))
         print(f"  Итераций отжига: {sa.iterations_done}")
 

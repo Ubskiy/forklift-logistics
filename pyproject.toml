@@ -24,7 +24,6 @@ viz = [
 
 [project.scripts]
 forklift-logistics = "app.interfaces.cli:main"
-forklift-logistics-desktop = "app.interfaces.desktop_app:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
