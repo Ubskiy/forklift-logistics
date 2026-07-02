@@ -4,4 +4,7 @@ __pycache__/
 .DS_Store
 .vscode/settings.json
 .env
-
+.pytest_cache/
+.artifacts_mpl_cache/
+artifacts/
+*.docx

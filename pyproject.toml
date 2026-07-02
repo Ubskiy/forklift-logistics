@@ -17,9 +17,17 @@ dependencies = []
 dev = [
   "pytest>=8.0",
   "matplotlib>=3.8",
+  "streamlit>=1.35",
 ]
 viz = [
   "matplotlib>=3.8",
+]
+ui = [
+  "streamlit>=1.35",
+]
+api = [
+  "fastapi>=0.111",
+  "uvicorn[standard]>=0.30",
 ]
 
 [project.scripts]
