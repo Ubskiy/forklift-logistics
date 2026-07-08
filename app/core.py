@@ -106,6 +106,7 @@ class Scenario:
     pipes: PipeConsumption = field(default_factory=PipeConsumption)
     tube_unit_weight_kg: float = 120.0
     shield_unit_weight_kg: float = 160.0
+    initial_source_tubes: int | None = None
     initial_tubes_at_c1: int = 0
     initial_shields_waiting_c2: int = 0
     initial_shields_waiting_c3: int = 0
@@ -705,7 +706,7 @@ def _new_simulation_state(scenario: Scenario) -> SimState:
     return SimState(
         last_update_min=0.0,
         buffers=PlantBuffers(
-            source_tubes=float(max(0, scenario.required_tubes_for_order() * 2)),
+            source_tubes=float(max(0, scenario.initial_source_tubes if scenario.initial_source_tubes is not None else scenario.required_tubes_for_order() * 2)),
             tubes_c1=float(scenario.initial_tubes_at_c1),
             c1_out=0.0,
             c2_in=0.0,

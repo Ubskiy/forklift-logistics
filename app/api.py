@@ -27,6 +27,7 @@ app = FastAPI(
 
 
 class InitialInventoryIn(BaseModel):
+    source_tubes: Optional[int] = None
     tubes_at_c1: Optional[int] = None
     shields_waiting_c2: Optional[int] = None
     shields_waiting_c3: Optional[int] = None
@@ -101,6 +102,8 @@ def _apply_request_to_scenario(payload: CompareRequest):
 
     if payload.initial_inventory is not None:
         inv = payload.initial_inventory
+        if inv.source_tubes is not None:
+            scenario.initial_source_tubes = inv.source_tubes
         if inv.tubes_at_c1 is not None:
             scenario.initial_tubes_at_c1 = inv.tubes_at_c1
         if inv.shields_waiting_c2 is not None:
@@ -160,17 +163,6 @@ def _trip_json(trip, shift_start: str) -> dict:
     return data
 
 
-def _result_json(result, shift_start: str) -> dict:
-    return {
-        "strategy_name": result.strategy_name,
-        "metrics": _metrics_json(result),
-        "objective_breakdown": result.meta.get("objective_breakdown", {}),
-        "route_stats": [asdict(item) for item in result.route_stats],
-        "trip_log": [_trip_json(item, shift_start) for item in result.trip_records],
-        "meta": result.meta,
-    }
-
-
 def _scenario_json(scenario) -> dict:
     return {
         "name": scenario.name,
@@ -185,6 +177,7 @@ def _scenario_json(scenario) -> dict:
         "annealing": asdict(scenario.sa),
         "buffers": asdict(scenario.buffers),
         "initial_inventory": {
+            "source_tubes": scenario.initial_source_tubes,
             "tubes_at_c1": scenario.initial_tubes_at_c1,
             "shields_waiting_c2": scenario.initial_shields_waiting_c2,
             "shields_waiting_c3": scenario.initial_shields_waiting_c3,
@@ -213,8 +206,7 @@ def scenario_details(name: Literal["sample_day", "sample_night"]) -> dict:
     return _scenario_json(load_scenario(name))
 
 
-@app.post("/compare")
-def compare(payload: CompareRequest) -> dict:
+def _run_compare(payload: CompareRequest):
     scenario = _apply_request_to_scenario(payload)
 
     greedy = run_simulation(
@@ -227,11 +219,26 @@ def compare(payload: CompareRequest) -> dict:
     seed = scenario.sa.seed if payload.annealing is None else payload.annealing.seed
     sa = optimize_with_sa(scenario, seed=seed).best_result
     evaluate_objective(sa, scenario)
+    return scenario, greedy, sa
 
+
+def _result_json(result, shift_start: str, *, include_route_stats: bool, include_trip_log: bool) -> dict:
+    return {
+        "strategy_name": result.strategy_name,
+        "metrics": _metrics_json(result),
+        "objective_breakdown": result.meta.get("objective_breakdown", {}),
+        "route_stats": [asdict(item) for item in result.route_stats] if include_route_stats else [],
+        "trip_log": [_trip_json(item, shift_start) for item in result.trip_records] if include_trip_log else [],
+        "meta": result.meta,
+    }
+
+
+def _compare_response(payload: CompareRequest, *, include_route_stats: bool, include_trip_log: bool) -> dict:
+    scenario, greedy, sa = _run_compare(payload)
     return {
         "scenario": _scenario_json(scenario),
-        "greedy": _result_json(greedy, scenario.shift_start_hhmm),
-        "simulated_annealing": _result_json(sa, scenario.shift_start_hhmm),
+        "greedy": _result_json(greedy, scenario.shift_start_hhmm, include_route_stats=include_route_stats, include_trip_log=include_trip_log),
+        "simulated_annealing": _result_json(sa, scenario.shift_start_hhmm, include_route_stats=include_route_stats, include_trip_log=include_trip_log),
         "delta": {
             "shipped_qty": sa.metrics.shipped_qty - greedy.metrics.shipped_qty,
             "shortfall_qty": sa.metrics.shortfall_qty - greedy.metrics.shortfall_qty,
@@ -240,3 +247,23 @@ def compare(payload: CompareRequest) -> dict:
             "trips_total": sa.metrics.trips_total - greedy.metrics.trips_total,
         },
     }
+
+
+@app.post("/compare")
+def compare(payload: CompareRequest) -> dict:
+    return _compare_response(payload, include_route_stats=True, include_trip_log=True)
+
+
+@app.post("/compare/summary")
+def compare_summary(payload: CompareRequest) -> dict:
+    return _compare_response(payload, include_route_stats=False, include_trip_log=False)
+
+
+@app.post("/compare/routes")
+def compare_routes(payload: CompareRequest) -> dict:
+    return _compare_response(payload, include_route_stats=True, include_trip_log=False)
+
+
+@app.post("/compare/trips")
+def compare_trips(payload: CompareRequest) -> dict:
+    return _compare_response(payload, include_route_stats=False, include_trip_log=True)
